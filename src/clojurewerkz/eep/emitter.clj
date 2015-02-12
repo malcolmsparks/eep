@@ -167,6 +167,17 @@ Pretty much topic routing.")
   (accept [_ payload]
     (f (.getData payload))))
 
+(deftype Notifier [emitter f]
+  IHandler
+  (state [_]
+    nil)
+
+  (downstream [_] nil)
+
+  Consumer
+  (accept [_ payload]
+    (f emitter (.getData payload))))
+
 (deftype Rollup [emitter f redistribute-t]
   IHandler
   (state [_]
@@ -323,14 +334,21 @@ Pretty much topic routing.")
   [emitter t f]
   (add-handler emitter t (Observer. emitter f)))
 
+(defn defnotifier
+  "Defines a notifier, that runs (potentially with side-effects) f for tuples of given type."
+  [emitter t f]
+  (add-handler emitter t (Notifier. emitter f)))
+
 (defn defrollup
   "Rollup is a timed window, that accumulates entries until it times out, and emits them
    to the next processing part afterwards. Rollup resolution should not be less than 10 milliseconds."
-  [emitter t period redistribute-t]
-  (let [window (ws/timed-window-simple
+  [emitter t period redistribute-t & [timer :as args]]
+  (let [window (apply ws/timed-window-simple
                 (cl/make-wall-clock period)
                 10 identity
-                #(notify emitter redistribute-t %))]
+                #(notify emitter redistribute-t %)
+                args
+                )]
     (add-handler emitter t (Rollup. emitter window redistribute-t))))
 
 (defn defbuffer
